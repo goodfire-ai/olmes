@@ -7,7 +7,9 @@ from typing import DefaultDict, List, Optional, Tuple, cast
 import importlib_metadata
 import torch
 import transformers
+from more_itertools import distribute
 from lm_eval.models.utils import Collator
+from lm_eval.models.utils import undistribute
 from lm_eval.models.vllm_causallms import VLLM
 from packaging import version
 from tqdm import tqdm
@@ -110,6 +112,61 @@ class VLLM_Verbose(VLLM):
             ray.shutdown()
         except Exception:
             pass
+
+    @staticmethod
+    def _as_vllm_token_prompts(requests: List[List[int]]):
+        from vllm import TokensPrompt
+
+        return [TokensPrompt(prompt_token_ids=list(request)) for request in requests]
+
+    def _model_generate(
+        self,
+        requests: List[List[int]] = None,
+        generate: bool = False,
+        max_tokens: int = None,
+        stop: Optional[List[str]] = None,
+        **kwargs,
+    ):
+        from vllm import LLM
+        from vllm import SamplingParams
+
+        requests = requests or []
+        if generate:
+            kwargs = self.modify_gen_kwargs(kwargs)
+            sampling_params = SamplingParams(max_tokens=max_tokens, stop=stop, **kwargs)
+        else:
+            sampling_params = SamplingParams(
+                temperature=0, prompt_logprobs=1, max_tokens=1, detokenize=False
+            )
+
+        if self.data_parallel_size > 1:
+            import ray
+
+            @ray.remote
+            def run_inference_one_model(
+                model_args: dict, sampling_params, requests: List[List[int]]
+            ):
+                llm = LLM(**model_args)
+                return llm.generate(
+                    prompts=VLLM_Verbose._as_vllm_token_prompts(requests),
+                    sampling_params=sampling_params,
+                )
+
+            requests = [list(x) for x in distribute(self.data_parallel_size, requests)]
+            inputs = ((self.model_args, sampling_params, req) for req in requests)
+            object_refs = [run_inference_one_model.remote(*x) for x in inputs]
+            results = ray.get(object_refs)
+            ray.shutdown()
+            return undistribute(results)
+
+        generate_kwargs = {
+            "prompts": self._as_vllm_token_prompts(requests),
+            "sampling_params": sampling_params,
+            "use_tqdm": True if self.batch_size == "auto" else False,
+        }
+        if self.lora_request is not None:
+            generate_kwargs["lora_request"] = self.lora_request
+        return self.model.generate(**generate_kwargs)
 
     def generate_until_verbose(
         self, requests: List[GenerateUntilRequest], disable_tqdm: bool = False
