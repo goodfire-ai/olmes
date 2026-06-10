@@ -399,6 +399,10 @@ TASK_SUITE_CONFIGS["mmlu_pro:cot::none"] = {
     "tasks": [f"mmlu_pro_{cat}:cot::none" for cat in MMLU_PRO_CATEGORIES],
     "primary_metric": "micro",
 }
+TASK_SUITE_CONFIGS["mmlu_pro:cot::qwen3_stopfix"] = {
+    "tasks": [f"mmlu_pro_{cat}:cot::qwen3_stopfix" for cat in MMLU_PRO_CATEGORIES],
+    "primary_metric": "micro",
+}
 TASK_SUITE_CONFIGS["mmlu_pro:cot::llama3.1"] = {
     "tasks": [f"mmlu_pro_{cat}:cot::llama3.1" for cat in MMLU_PRO_CATEGORIES],
     "primary_metric": "micro",

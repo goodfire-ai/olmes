@@ -8,6 +8,7 @@ Repository: https://github.com/facebookresearch/cruxeval
 Huggingface dataset: https://huggingface.co/datasets/cruxeval-org/cruxeval
 """
 
+import re
 from typing import List, Union
 
 from oe_eval.components.instances import RequestInstance
@@ -165,7 +166,7 @@ class CruxEvalOutput(CruxEvalInput):
                 "description": "Based on the given Python code, which may contain errors, complete the assert statement with the output when executing the code on the given test case. Do NOT output any extra information, even if the function is incorrect or incomplete. Do NOT output a description for the assert.\n"
             },
             "generation_kwargs": {
-                "stop_sequences": ["\nassert", "\ndef" "```", '\n"""', "\n#", "\n\n"],
+                "stop_sequences": ["\nassert", "\ndef", "\n```", '\n"""', "\n#", "\n\n"],
             },
         },
         CruxEvalInput.TASK_CONFIG_DEFAULTS,
@@ -175,8 +176,46 @@ class CruxEvalOutput(CruxEvalInput):
         code = doc["code"]
         input = doc["input"]
         output = doc["output"]
+        prompt_variant = self.task_config["context_kwargs"].get("prompt_variant")
 
-        query = f"\n{code}\nassert f({input}) =="
+        if prompt_variant == "official_direct":
+            query = (
+                "You are given a Python function and an assertion containing an input to the "
+                "function. Complete the assertion with a literal (no unsimplified expressions, "
+                "no function calls) containing the output when executing the provided code on "
+                "the given input, even if the function is incorrect or incomplete.\n"
+                "Do NOT output any extra information. Provide the full assertion with the "
+                "correct output in [ANSWER] and [/ANSWER] tags, following the examples.\n"
+                '[PYTHON] def f(n): return n assert f(17) == ?? [/PYTHON] '
+                "[ANSWER] assert f(17) == 17 [/ANSWER] "
+                '[PYTHON] def f(s): return s + "a" assert f("x9j") == ?? [/PYTHON] '
+                '[ANSWER] assert f("x9j") == "x9ja" [/ANSWER] '
+                f"[PYTHON] {code} assert f({input}) == ?? [/PYTHON] [ANSWER] "
+            )
+        elif prompt_variant == "official_cot_output":
+            query = (
+                "You are given a Python function and an assertion containing an input to the "
+                "function. Complete the assertion with a literal (no unsimplified expressions, "
+                "no function calls) containing the output when executing the provided code on "
+                "the given input, even if the function is incorrect or incomplete.\n"
+                "Do NOT output any extra information. Execute the program step by step before "
+                "arriving at an answer, and provide the full assertion with the correct output "
+                "in [ANSWER] and [/ANSWER] tags, following the examples. "
+                '[PYTHON] def f(s): s = s + s return "b" + s + "a" assert f("hi") == ?? [/PYTHON] '
+                "[THOUGHT] Let's execute the code step by step: 1. The function f is defined, "
+                'which takes a single argument s. 2. The function is called with the argument "hi", '
+                'so within the function, s is initially "hi". 3.\n'
+                'Inside the function, s is concatenated with itself, so s becomes "hihi". '
+                '4. The function then returns a new string that starts with "b", followed by '
+                'the value of s (which is now "hihi"), and ends with "a". 5. The return value '
+                'of the function is therefore "bhihia".\n'
+                '[/THOUGHT] [ANSWER] assert f("hi") == "bhihia" [/ANSWER] '
+                f"[PYTHON] {code} assert f({input}) == ?? [/PYTHON] [THOUGHT] "
+            )
+        elif prompt_variant == "lm_eval_direct":
+            query = f"[PYTHON]\n{code}\nassert f({input}) == ??\n[/PYTHON]"
+        else:
+            query = f"\n{code}\nassert f({input}) =="
 
         out_doc = {
             "index": index,
@@ -192,7 +231,32 @@ class CruxEvalOutput(CruxEvalInput):
         return out_doc
 
     def doc_to_target(self, doc):
+        prompt_variant = self.task_config["context_kwargs"].get("prompt_variant")
+        if prompt_variant == "official_direct":
+            return f'assert f({doc["input"]}) == {doc["output"]} [/ANSWER]'
+        if prompt_variant == "official_cot_output":
+            return f'[/THOUGHT] [ANSWER] assert f({doc["input"]}) == {doc["output"]} [/ANSWER]'
+        if prompt_variant == "lm_eval_direct":
+            return f'\n[ANSWER]\nassert f({doc["input"]}) == {doc["output"]}\n[/ANSWER]'
         return " " + doc["output"]
+
+    @staticmethod
+    def _extract_official_direct_output(continuation: str) -> str:
+        answer = continuation.strip()
+        if "[ANSWER]" in answer:
+            answer = answer.rsplit("[ANSWER]", 1)[-1].strip()
+        elif "[/THOUGHT]" in answer:
+            answer = answer.rsplit("[/THOUGHT]", 1)[-1].strip()
+        if "[/ANSWER]" in answer:
+            answer = answer.split("[/ANSWER]", 1)[0].strip()
+        if "assert" in answer and "==" in answer:
+            answer = answer.rsplit("==", 1)[-1].strip()
+        answer = re.split(
+            r"\n\s*(?:\[/?(?:PYTHON|THOUGHT|ANSWER)\]|assert\s+|def\s+)",
+            answer,
+            maxsplit=1,
+        )[0].strip()
+        return answer
 
     def _process_code_results(self, results: List[dict]) -> List[dict]:
         """
@@ -203,6 +267,12 @@ class CruxEvalOutput(CruxEvalInput):
             function = res["doc"]["code"]
             input = res["doc"]["input"]
             predicted_output = res["model_resps"]["continuation"]
+            if self.task_config["context_kwargs"].get("prompt_variant") in {
+                "official_direct",
+                "official_cot_output",
+                "lm_eval_direct",
+            }:
+                predicted_output = self._extract_official_direct_output(predicted_output)
 
             unittests = f"assert f({input}) == {predicted_output}"
 
