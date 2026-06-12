@@ -175,6 +175,11 @@ class GPQA(Task):
         )
 
     def _extract_answer(self, continuation: str):
+        # Some base models keep generating the next few-shot/example prompt after
+        # answering. Score only the first response span so fallback regexes don't
+        # pick up an answer from a hallucinated follow-on question.
+        continuation = re.split(r"\n\s*Question:", continuation, maxsplit=1)[0]
+
         if self.task_config["metric_kwargs"].get("answer_regexes"):
             res = extract_answer(continuation, task_config=self.task_config)
             res = self._clean_answer(res)

@@ -2498,6 +2498,21 @@ FEWSHOT_SOURCES["Original:CruxEvalOutput"] = [
     },
 ]
 
+FEWSHOT_SOURCES["Original:CruxEvalOutput:lm_eval"] = [
+    {
+        "id": "1",
+        "code": "def f(n):\n    return n",
+        "input": "17",
+        "output": "17",
+    },
+    {
+        "id": "2",
+        "code": 'def f(s):\n    return s + "a"',
+        "input": '"x9j"',
+        "output": '"x9ja"',
+    },
+]
+
 FEWSHOT_SOURCES["Llama3:squad2"] = [
     {
         "id": "56d43ce42ccc5a1400d830b5",

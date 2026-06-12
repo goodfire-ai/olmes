@@ -11,6 +11,7 @@ Homepage:: https://github.com/google-research/google-research/tree/master/mbpp
 """
 
 import random
+import re
 from typing import List, Optional, Union
 
 from oe_eval.components.instances import RequestInstance
@@ -182,6 +183,13 @@ class MBPP(Task):
                 + doc["code"].split(":")[0]
             )
             out_doc["query"] = text_prefix
+        elif self.task_config["context_kwargs"].get("prompt_variant") == "qwen3_signature_tests":
+            text_prefix = doc[self.PROMPT_FIELD].strip()
+            unittest_prefix = "\nYour code should pass these tests:\n" + "\n".join(
+                doc["test_list"][:3]
+            )
+            signature = doc["code"].split(":")[0] + ":"
+            out_doc["query"] = text_prefix + unittest_prefix + "\n```python\n" + signature
         elif self.task_config["context_kwargs"].get("prompt_variant") == "inloop_bpb":
             text_prefix = doc[self.PROMPT_FIELD].strip()
             out_doc["query"] = text_prefix + "\n```python\n"
@@ -198,6 +206,12 @@ class MBPP(Task):
     def doc_to_target(self, doc):
         if self.task_config["context_kwargs"].get("prompt_variant") == "deepseek":
             return "\n[BEGIN]\n" + doc["code"] + "\n[DONE]"
+        if self.task_config["context_kwargs"].get("prompt_variant") == "qwen3_signature_tests":
+            signature = doc["code"].split(":")[0] + ":"
+            code = doc["code"].rstrip("\n").rstrip().replace("\r", "")
+            if code.startswith(signature):
+                return code[len(signature) :] + "\n```"
+            return "\n" + code + "\n```"
         if self.task_config["context_kwargs"].get("prompt_variant") == "inloop_bpb":
             return doc["code"].rstrip("\n").rstrip().replace("\r", "") + "\n```"
         else:
@@ -231,7 +245,8 @@ class MBPP(Task):
         use_chat_format: bool = False,
         fewshot_as_multiturn: bool = False,
     ) -> Union[str, list, dict]:
-        if self.task_config["context_kwargs"].get("prompt_variant") == "inloop_bpb":
+        prompt_variant = self.task_config["context_kwargs"].get("prompt_variant")
+        if prompt_variant in {"inloop_bpb", "qwen3_signature_tests"}:
             assert num_fewshot <= len(
                 self.dataset["prompt"]
             ), f"num_fewshot must be <= {len(self.dataset['prompt'])}"
@@ -245,16 +260,12 @@ class MBPP(Task):
                 for query, answer in fewshot_docs:
                     messages.append({"role": "user", "content": query.strip()})
                     messages.append({"role": "assistant", "content": answer.strip()})
-                messages.append({"role": "user", "content": doc["text"]})
+                messages.append({"role": "user", "content": self.doc_to_text(doc).strip()})
                 return {"messages": messages}
             else:
-                text = (
-                    "\n\n".join([query + answer for query, answer in fewshot_docs])
-                    + "\n\n"
-                    + doc["text"].strip()
-                    + "\n```python\n"
+                return "\n\n".join([query + answer for query, answer in fewshot_docs]) + (
+                    "\n\n" + self.doc_to_text(doc)
                 )
-                return text
         else:
             return super().fewshot_context(
                 doc=doc,
@@ -277,7 +288,18 @@ class MBPP(Task):
         """
         output = []
         for res in results:
+            res_id = res.get("res_id", f"{res['doc_id']}-{res['idx']}")
+            res["res_id"] = res_id
             completion = res["model_resps"]["continuation"]
+            if self.task_config["context_kwargs"].get("prompt_variant") == "qwen3_signature_tests":
+                stripped_completion = completion.lstrip()
+                if re.match(r"^(def|import|from|class)\b", stripped_completion):
+                    completion = stripped_completion
+                else:
+                    body = re.sub(r"^[ \t]*\r?\n", "", completion, count=1)
+                    if body and not body[0].isspace():
+                        body = "    " + body.replace("\n", "\n    ")
+                    completion = res["doc"]["code"].split(":")[0] + ":\n" + body
 
             if self.task_config["metric_kwargs"].get("answer_regexes"):
                 model_answer = extract_answer(completion, task_config=self.task_config)["answer"]
@@ -298,10 +320,13 @@ class MBPP(Task):
                 raise ValueError(
                     "Invalid unittest_list value. Use 'test_list' for original MBPP tests or 'test' for MBPPPlus tests."
                 )
+            test_setup_code = res["doc"].get("test_setup_code", "")
+            if test_setup_code:
+                unittests = test_setup_code.rstrip() + "\n" + unittests
 
             output.append(
                 {
-                    "res_id": res["res_id"],
+                    "res_id": res_id,
                     "completion": completion,
                     "test": unittests,
                 }

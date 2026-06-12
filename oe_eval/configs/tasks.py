@@ -1226,6 +1226,68 @@ TASK_CONFIGS.update(
                 "regimes": ["Llama-3"],
             },
         },
+        "gpqa:5shot_cot::qwen3_official_prompt": {
+            "task_name": "gpqa",
+            "dataset_name": "gpqa_main",
+            "split": "train",
+            "primary_metric": "exact_match",
+            "num_shots": 5,
+            "fewshot_source": "Original:GPQA",
+            "generation_kwargs": {
+                "max_gen_toks": 2048,
+                "do_sample": False,
+                "temperature": 0.0,
+                "stop_sequences": [
+                    "\n\nQuestion:",
+                    "\nQuestion:",
+                    "You are an AI assistant",
+                    "</s>",
+                    "<|im_end|>",
+                ],
+            },
+            "context_kwargs": {
+                "answer_shuffling_seed": 111,
+                "description": "Here are some example questions from experts. An explanation is given before the final answer. Answer the final question yourself, giving your reasoning beforehand.\n",
+                "final_description": "\nGive step by step reasoning before you answer, and when you're ready to answer, please use the format \"The correct answer is (insert answer here)\":\n",
+            },
+            "metric_kwargs": {
+                "answer_format_regex": "The correct answer is \\(([A-D])\\)",
+            },
+            "metadata": {
+                "regimes": [],
+            },
+        },
+        "gpqa_diamond:5shot_cot::qwen3_official_prompt": {
+            "task_name": "gpqa",
+            "dataset_name": "gpqa_diamond",
+            "split": "train",
+            "primary_metric": "exact_match",
+            "num_shots": 5,
+            "fewshot_source": "Original:GPQA",
+            "generation_kwargs": {
+                "max_gen_toks": 2048,
+                "do_sample": False,
+                "temperature": 0.0,
+                "stop_sequences": [
+                    "\n\nQuestion:",
+                    "\nQuestion:",
+                    "You are an AI assistant",
+                    "</s>",
+                    "<|im_end|>",
+                ],
+            },
+            "context_kwargs": {
+                "answer_shuffling_seed": 111,
+                "description": "Here are some example questions from experts. An explanation is given before the final answer. Answer the final question yourself, giving your reasoning beforehand.\n",
+                "final_description": "\nGive step by step reasoning before you answer, and when you're ready to answer, please use the format \"The correct answer is (insert answer here)\":\n",
+            },
+            "metric_kwargs": {
+                "answer_format_regex": "The correct answer is \\(([A-D])\\)",
+            },
+            "metadata": {
+                "regimes": [],
+            },
+        },
         "gpqa:0shot_cot::tulu3": {
             "task_name": "gpqa",
             "split": "train",
@@ -1652,6 +1714,33 @@ TASK_CONFIGS.update(
             "compute_gold_bpb": True,
             "num_shots": 3,  # like deepseek
             "limit": 500,
+        },
+        "mbpp:3shot::qwen3_signature_tests": {
+            "task_name": "mbpp",
+            "primary_metric": "pass_at_1",
+            "generation_kwargs": {
+                "stop_sequences": ["```", '\n"""', "\nassert", "\n#", "\n<|/", "<|eot_id|>"],
+                "do_sample": True,
+                "top_p": 0.95,
+                "temperature": 0.2,
+                "repeats": 20,
+            },
+            "use_chat_format": False,
+            "context_kwargs": {
+                "prompt_variant": "qwen3_signature_tests",
+                "assistant_prefix": None,
+            },
+            "metric_kwargs": {
+                "pass_at_ks": [1],
+                "n_exe_workers": 20,
+                "rich_exec_info": True,
+            },
+            "compute_gold_bpb": False,
+            "num_shots": 3,
+            "limit": 500,
+            "metadata": {
+                "regimes": [],
+            },
         },
         "mbpp:3shot::olmo3": {
             "task_name": "mbpp",
@@ -4942,6 +5031,20 @@ for cat in MMLU_PRO_CATEGORIES:
             "regimes": [],
         },
     }
+    TASK_CONFIGS[f"mmlu_pro_{cat}:cot::qwen3_stopfix"] = {
+        "task_name": f"mmlu_pro_{cat}:cot",
+        "split": "test",
+        "num_shots": 5,
+        "generation_kwargs": {
+            "max_gen_toks": 1024,
+            "do_sample": False,
+            "temperature": 0.0,
+            "stop_sequences": ["Question:"],
+        },
+        "metadata": {
+            "regimes": [],
+        },
+    }
     TASK_CONFIGS[f"mmlu_pro_{cat}:cot::llama3.1"] = {
         "task_name": f"mmlu_pro_{cat}:cot",
         "split": "test",
@@ -7082,6 +7185,127 @@ TASK_CONFIGS.update(
                 "top_p": 0.95,
                 "temperature": 0.2,
                 "repeats": 1,
+            },
+            "metric_kwargs": {
+                "pass_at_ks": [1],
+                "n_exe_workers": 20,
+                "rich_exec_info": True,
+            },
+            "metadata": {
+                "regimes": [],
+            },
+        },
+        "cruxeval_output::qwen3_greedy": {
+            "task_name": "cruxeval_output",
+            "primary_metric": "pass_at_1",
+            "generation_kwargs": {
+                "do_sample": False,
+                "temperature": 0.0,
+                "repeats": 1,
+                "stop_sequences": ["\nassert", "\ndef", "\n```", '\n"""', "\n#", "\n\n"],
+            },
+            "metric_kwargs": {
+                "pass_at_ks": [1],
+                "n_exe_workers": 20,
+                "rich_exec_info": True,
+            },
+            "metadata": {
+                "regimes": [],
+            },
+        },
+        "cruxeval_output::official_direct": {
+            "task_name": "cruxeval_output",
+            "primary_metric": "pass_at_1",
+            "num_shots": 0,
+            "generation_kwargs": {
+                "max_gen_toks": 512,
+                "do_sample": False,
+                "temperature": 0.0,
+                "repeats": 1,
+                "stop_sequences": ["[/ANSWER]", "</s>", "<|im_end|>"],
+            },
+            "context_kwargs": {
+                "description": "",
+                "prompt_variant": "official_direct",
+            },
+            "metric_kwargs": {
+                "pass_at_ks": [1],
+                "n_exe_workers": 20,
+                "rich_exec_info": True,
+            },
+            "metadata": {
+                "regimes": [],
+            },
+        },
+        "cruxeval_output::official_cot_1shot": {
+            "task_name": "cruxeval_output",
+            "primary_metric": "pass_at_1",
+            "num_shots": 0,
+            "generation_kwargs": {
+                "max_gen_toks": 2048,
+                "do_sample": True,
+                "temperature": 0.2,
+                "top_p": 0.95,
+                "repeats": 10,
+                "stop_sequences": ["[/ANSWER]", "</s>", "<|im_end|>"],
+            },
+            "context_kwargs": {
+                "description": "",
+                "prompt_variant": "official_cot_output",
+            },
+            "metric_kwargs": {
+                "pass_at_ks": [1, 5],
+                "n_exe_workers": 20,
+                "rich_exec_info": True,
+            },
+            "metadata": {
+                "regimes": [],
+            },
+        },
+        "cruxeval_output::lm_eval_2shot": {
+            "task_name": "cruxeval_output",
+            "primary_metric": "pass_at_1",
+            "num_shots": 2,
+            "fewshot_source": "Original:CruxEvalOutput:lm_eval",
+            "generation_kwargs": {
+                "max_gen_toks": 1024,
+                "do_sample": True,
+                "temperature": 0.2,
+                "top_p": 0.95,
+                "repeats": 10,
+                "stop_sequences": ["[/ANSWER]", "</seed:think>[ANSWER]", "</s>", "<|im_end|>"],
+            },
+            "context_kwargs": {
+                "description": "You are given a Python function and an assertion containing an input to the function. Complete the assertion with a literal (no unsimplified expressions, no function calls) containing the output when executing the provided code on the given input, even if the function is incorrect or incomplete. Do NOT output any extra information. Provide the full assertion with the correct output in [ANSWER] and [/ANSWER] tags, following the examples.\n",
+                "final_description": "\n[ANSWER]\n",
+                "prompt_variant": "lm_eval_direct",
+            },
+            "metric_kwargs": {
+                "pass_at_ks": [1],
+                "n_exe_workers": 20,
+                "rich_exec_info": True,
+            },
+            "metadata": {
+                "regimes": [],
+            },
+        },
+        "cruxeval_output::lm_eval_1shot": {
+            "task_name": "cruxeval_output",
+            "primary_metric": "pass_at_1",
+            "num_shots": 1,
+            "fewshot_source": "Original:CruxEvalOutput:lm_eval",
+            "generation_kwargs": {
+                "max_gen_toks": 1024,
+                "do_sample": True,
+                "temperature": 0.2,
+                "top_p": 0.95,
+                "repeats": 10,
+                "stop_sequences": ["[/ANSWER]", "</seed:think>[ANSWER]", "</s>", "<|im_end|>"],
+            },
+            "context_kwargs": {
+                "description": "You are given a Python function and an assertion containing an input to the function. Complete the assertion with a literal (no unsimplified expressions, no function calls) containing the output when executing the provided code on the given input, even if the function is incorrect or incomplete. Do NOT output any extra information. Provide the full assertion with the correct output in [ANSWER] and [/ANSWER] tags, following the examples.\n",
+                "final_description": "\n[ANSWER]\n",
+                "prompt_variant": "lm_eval_direct",
             },
             "metric_kwargs": {
                 "pass_at_ks": [1],
